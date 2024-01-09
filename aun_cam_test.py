@@ -19,7 +19,10 @@ def capture_video():
     width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
     height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
 
-    out_dir = 'data'
+    out_dir = os.getenv('DATA_PATH')
+    if out_dir is None:
+        out_dir = '.'
+
     result = cv2.VideoWriter(os.path.join(out_dir, 'output.avi'), cv2.VideoWriter_fourcc(*'MJPG'), 30, (640, 480))
     image_dir = os.path.join('.', out_dir, 'image')
     img_ext = '.png'
@@ -57,8 +60,9 @@ def capture_image(i):
     print("Width=", cam.get(cv2.CAP_PROP_FRAME_WIDTH))
     print("Height=", cam.get(cv2.CAP_PROP_FRAME_HEIGHT))
 
-    out_path = os.getenv('IMAGE_PATH')
-    print(out_path)
+    out_dir = os.getenv('DATA_PATH')
+    if out_dir is None:
+        out_dir = '.'
 
     if result:
         cv2.imshow("Image", image)
@@ -67,10 +71,9 @@ def capture_image(i):
         # out_dir = 'data'
         # image_dir = os.path.join('.', out_dir, 'image')
         img_ext = '.png'
-        if out_path is not None:
-            image_file = os.path.join(out_path, 'image' + str(i) + img_ext)
-        else:
-            image_file = 'data/image' + str(i) + img_ext
+
+        image_file = os.path.join(out_dir, 'image' + str(i) + img_ext)
+
         cv2.imwrite(image_file, image)
         print("image is written: " + image_file)
 
@@ -86,4 +89,4 @@ if __name__ == '__main__':
     # capture_video()
 
     for i in range(10):
-        capture_image(20+i)
+        capture_image(50+i)

@@ -2,6 +2,7 @@
 @file hough_lines.py
 @brief This program demonstrates line finding with the Hough transform
 """
+import os
 import sys
 import math
 
@@ -147,4 +148,26 @@ def find_circles(img, hparams=(18, 60, 27, 30, 70)):
 
 if __name__ == "__main__":
     # main_lines(sys.argv[1:])
-    main_circle(sys.argv[1:])
+    # main_circle(sys.argv[1:])
+
+    data_dir = os.getenv('DATA_PATH')
+    print(data_dir)
+
+    img_path = os.path.join(data_dir, 'image20.png')
+
+    img = cv2.imread(img_path, cv2.IMREAD_UNCHANGED)
+
+    circles = find_circles(img, (8, 60, 30, 1, 30))
+
+    img_show = img
+    if circles is not None:
+        if len(circles) == 1 and len(circles[0]) == 1:
+            circles = circles[0]
+        else:
+            circles = circles.squeeze()
+        for circle in circles:
+            img_show = cv2.circle(img_show, (int(circle[0]), int(circle[1])), int(circle[2]), (0, 0, 255), 2)
+
+    cv2.imshow("Image", img_show[:, :, 1])
+
+    cv2.waitKey(0)

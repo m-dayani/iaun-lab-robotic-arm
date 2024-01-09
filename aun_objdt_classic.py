@@ -24,32 +24,6 @@ from hough_transform import find_circles
 #   d) when all points are classified, look for the structure: which points make a rectangle
 #   e) can optionally refine the results by ROI
 
-def point_dist(pt1, pt2):
-    return np.sqrt(np.sum(np.square(pt1 - pt2)))
-
-
-def calc_object_center(patch):
-    ddepth = cv2.CV_32F
-    dx = cv2.Sobel(patch, ddepth, 1, 0)
-    dy = cv2.Sobel(patch, ddepth, 0, 1)
-    dxabs = cv2.convertScaleAbs(dx)
-    dyabs = cv2.convertScaleAbs(dy)
-    mag = cv2.addWeighted(dxabs, 0.5, dyabs, 0.5, 0)
-
-    th = 100
-    mask = mag > th
-    w, h = mask.shape
-
-    X = np.repeat(np.arange(0, h).reshape((1, h)), w, axis=0)
-    Y = np.repeat(np.arange(0, w).reshape((w, 1)), h, axis=1)
-    x_sel = X[mask]
-    y_sel = Y[mask]
-    obj_x = np.sum(x_sel) / len(x_sel)
-    obj_y = np.sum(y_sel) / len(y_sel)
-
-    return np.array([obj_x, obj_y])
-
-
 def detect_black_square(image, patch):
     # Template Matching (find ROI)
     tm_res = cv2.matchTemplate(image, patch, cv2.TM_SQDIFF_NORMED)
@@ -198,30 +172,6 @@ def calib_square(points, K):
     t_cw = s * K_1 @ np.array([points[0, 1], points[0, 0], 1.0]).reshape((3, 1))
 
 
-def smooth(img, gk_size=(3, 3), mk_size=5):
-    # make sure images are grayscale
-    gray = img
-    if len(gray.shape) >= 3:
-        gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-
-    # perform gaussian denoising followed by median filtering
-    gauss = cv2.GaussianBlur(gray, gk_size, cv2.BORDER_DEFAULT)
-    med = cv2.medianBlur(gauss, mk_size)
-
-    return med
-
-
-def get_mesh(size):
-    xsz = size[0]
-    ysz = size[1]
-    x = np.arange(ysz)
-    y = np.arange(xsz)
-    X = np.repeat(x.reshape((1, len(x))), xsz, axis=0)
-    Y = np.repeat(y.reshape((len(y), 1)), ysz, axis=1)
-
-    return X, Y
-
-
 def find_roi_thresh(th_img):
     mask = th_img > 0
     img_size = th_img.shape[:2]
@@ -245,38 +195,57 @@ def find_roi_thresh(th_img):
 
     return np.array([x_min, x_max, y_min, y_max])
 
-
-def track_hough_circles(img, last_img):
-    # smooth both images
-    img_s = smooth(img)
-    last_img_s = smooth(last_img)
-
-    # subtract images to find ROI
-    sub_img = cv2.addWeighted(img_s, 0.5, last_img_s, -0.5, 255)
-    # cv2.normalize(sub_img, sub_img, 0, 255, cv2.NORM_MINMAX, dtype=cv2.CV_8U)
-    # _minVal, _maxVal, minLoc, maxLoc = cv2.minMaxLoc(sub_img, None)
-    ret, thresh = cv2.threshold(sub_img, 230, 255, cv2.THRESH_BINARY_INV)
-
-    # find ROI
-    roi = find_roi_thresh(thresh)
-    center_roi = [(roi[0] + roi[1]) * 0.5, (roi[2] + roi[3]) * 0.5]
-
-    # find circles
-    circles = find_circles(img_s, hparams=(8, 60, 30, 10, 70))
-
-    if circles is not None:
-        if circles.shape[1] != 1:
-            circles = circles.squeeze()
+# for each of the contours detected, the shape of the contours is approximated using approxPolyDP()
+# function and the contours are drawn in the image using drawContours() function
+def detect_objects(contours, blank):
+    font_scale = 0.5
+    f_thick = 1
+    for count in contours:
+        epsilon = 0.01 * cv2.arcLength(count, True)
+        approximations = cv2.approxPolyDP(count, epsilon, True)
+        cv2.drawContours(blank, [approximations], 0, (0, 255, 0), 3)
+        # the name of the detected shapes are written on the image
+        i, j = approximations[0][0]
+        if len(approximations) == 3:
+            cv2.putText(blank, "Triangle", (i, j), cv2.FONT_HERSHEY_COMPLEX, font_scale, (0, 0, 255), f_thick)
+        elif len(approximations) == 4:
+            cv2.putText(blank, "Rectangle", (i, j), cv2.FONT_HERSHEY_COMPLEX, font_scale, (0, 0, 255), f_thick)
+        elif len(approximations) == 5:
+            cv2.putText(blank, "Pentagon", (i, j), cv2.FONT_HERSHEY_COMPLEX, font_scale, (0, 0, 255), f_thick)
+        elif 6 < len(approximations) < 15:
+            cv2.putText(blank, "Ellipse", (i, j), cv2.FONT_HERSHEY_COMPLEX, font_scale, (0, 0, 255), f_thick)
         else:
-            circles = circles[0]
-        dist_circles = []
-        for circle in circles:
-            dist_circles.append(point_dist(center_roi, circle[:2]))
-        min_dist = np.argmin(dist_circles)
+            cv2.putText(blank, "Circle", (i, j), cv2.FONT_HERSHEY_COMPLEX, font_scale, (0, 0, 255), f_thick)
+        # displaying the resulting image as the output on the screen
+        cv2.imshow("Resulting_image", blank)
+        cv2.waitKey(0)
 
-        return circles[min_dist]
-    else:
-        return np.array([center_roi[1], center_roi[0], 10])
+
+def angle_cos(p0, p1, p2):
+    d1, d2 = (p0 - p1).astype('float'), (p2 - p1).astype('float')
+    return abs(np.dot(d1, d2) / np.sqrt(np.dot(d1, d1) * np.dot(d2, d2)))
+
+
+def find_squares(img):
+    img = cv.GaussianBlur(img, (5, 5), 0)
+    squares = []
+    for gray in cv.split(img):
+        for thrs in xrange(0, 255, 26):
+            if thrs == 0:
+                bin = cv.Canny(gray, 0, 50, apertureSize=5)
+                bin = cv.dilate(bin, None)
+            else:
+                _retval, bin = cv.threshold(gray, thrs, 255, cv.THRESH_BINARY)
+            contours, _hierarchy = cv.findContours(bin, cv.RETR_LIST, cv.CHAIN_APPROX_SIMPLE)
+            for cnt in contours:
+                cnt_len = cv.arcLength(cnt, True)
+                cnt = cv.approxPolyDP(cnt, 0.02 * cnt_len, True)
+                if len(cnt) == 4 and cv.contourArea(cnt) > 1000 and cv.isContourConvex(cnt):
+                    cnt = cnt.reshape(-1, 2)
+                    max_cos = np.max([angle_cos(cnt[i], cnt[(i + 1) % 4], cnt[(i + 2) % 4]) for i in xrange(4)])
+                    if max_cos < 0.104:
+                        squares.append(cnt)
+    return squares
 
 
 def test_squares(base_dir):
@@ -314,6 +283,39 @@ def test_squares(base_dir):
 
     cv2.imshow('Image', im_show)
     cv2.waitKey(0)
+
+
+def track_hough_circles(img, last_img):
+    # smooth both images
+    img_s = smooth(img)
+    last_img_s = smooth(last_img)
+
+    # subtract images to find ROI
+    sub_img = cv2.addWeighted(img_s, 0.5, last_img_s, -0.5, 255)
+    # cv2.normalize(sub_img, sub_img, 0, 255, cv2.NORM_MINMAX, dtype=cv2.CV_8U)
+    # _minVal, _maxVal, minLoc, maxLoc = cv2.minMaxLoc(sub_img, None)
+    ret, thresh = cv2.threshold(sub_img, 230, 255, cv2.THRESH_BINARY_INV)
+
+    # find ROI
+    roi = find_roi_thresh(thresh)
+    center_roi = [(roi[0] + roi[1]) * 0.5, (roi[2] + roi[3]) * 0.5]
+
+    # find circles
+    circles = find_circles(img_s, hparams=(8, 60, 30, 10, 70))
+
+    if circles is not None:
+        if circles.shape[1] != 1:
+            circles = circles.squeeze()
+        else:
+            circles = circles[0]
+        dist_circles = []
+        for circle in circles:
+            dist_circles.append(point_dist(center_roi, circle[:2]))
+        min_dist = np.argmin(dist_circles)
+
+        return circles[min_dist]
+    else:
+        return np.array([center_roi[1], center_roi[0], 10])
 
 
 def test_hough_circles(base_dir):
@@ -439,6 +441,42 @@ def test_klt_of(base_dir):
 
     cap.release()
     cv2.destroyAllWindows()
+
+
+def test_watershed(img):
+    img = img_resize(img, 0.5)
+    gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+    ret, thresh = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU)
+
+    # cv.imshow('Thresh', thresh)
+
+    # noise removal
+    kernel = np.ones((3, 3), np.uint8)
+    opening = cv2.morphologyEx(thresh, cv2.MORPH_OPEN, kernel, iterations=2)
+    # sure background area
+    sure_bg = cv2.dilate(opening, kernel, iterations=3)
+    # Finding sure foreground area
+    dist_transform = cv2.distanceTransform(opening, cv2.DIST_L2, 5)
+    ret, sure_fg = cv2.threshold(dist_transform, 0.7 * dist_transform.max(), 255, 0)
+    # Finding unknown region
+    sure_fg = np.uint8(sure_fg)
+    unknown = cv2.subtract(sure_bg, sure_fg)
+
+    # cv.imshow("Sure_fg", unknown)
+
+    # Marker labelling
+    ret, markers = cv2.connectedComponents(sure_fg)
+    # Add one to all labels so that sure background is not 0, but 1
+    markers = markers + 1
+    # Now, mark the region of unknown with zero
+    markers[unknown == 255] = 0
+
+    markers = cv2.watershed(img, markers)
+    img[markers == -1] = [255, 0, 0]
+
+    cv2.imshow('final', img)
+
+    cv2.waitKey(0)
 
 
 if __name__ == "__main__":

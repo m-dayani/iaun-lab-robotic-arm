@@ -1,12 +1,13 @@
 import os
-
 import numpy as np
 from scipy.spatial.transform import Rotation as scipyR
 import cv2
 import pickle
 
+from aun_cam_calib import recalib_camera
 
-class LabCamera:
+
+class PinholeCamera:
     def __init__(self):
         self.fx = 625.24678685
         self.fy = 624.90293937
@@ -123,9 +124,50 @@ class LabCamera:
                 self.img_size = obj['img_size']
 
 
+class LabCamera(PinholeCamera):
+
+    def __init__(self, port, img_size):
+        super().__init__()
+        self.port = port
+        self.img_size = img_size
+        self.img_width = img_size[0]
+        self.img_height = img_size[1]
+        self.capture_duration = 10
+        self.usb_cam = None
+        self.init()
+
+    def init(self):
+        self.usb_cam = cv2.VideoCapture(self.port)
+
+        # usb_cam.set(cv2.CAP_PROP_FOURCC, cv2.VideoWriter_fourcc('U', 'Y', 'V', 'Y'))
+        self.usb_cam.set(cv2.CAP_PROP_FRAME_WIDTH, self.img_width)
+        self.usb_cam.set(cv2.CAP_PROP_FRAME_HEIGHT, self.img_height)
+
+        if not self.usb_cam.isOpened():
+            print("Error reading video file")
+
+        img_width = int(usb_cam.get(cv2.CAP_PROP_FRAME_WIDTH))
+        img_height = int(usb_cam.get(cv2.CAP_PROP_FRAME_HEIGHT))
+        print("image size: (%d x %d)" % (img_width, img_height))
+
+    def get_next(self):
+        if self.usb_cam is not None:
+            return self.usb_cam.read()
+        return False, None
+
+    def calibrate(self, calib_path):
+        # calibrate_camera(cam, frame, tm_patch)
+        res = recalib_camera(calib_path, frame, my_cam, ws=2.5)
+        return res
+
+    def close(self):
+        if self.usb_cam is not None:
+            usb_cam.release()
+
+
 if __name__ == "__main__":
     base_dir = os.getenv('DATA_PATH')
     param_file = os.path.join(base_dir, 'lab-cam-params.pkl')
-    my_cam = LabCamera()
+    my_cam = PinholeCamera()
     my_cam.save_params(param_file)
     my_cam.load_params(param_file)
