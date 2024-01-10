@@ -1,8 +1,6 @@
 import cv2
 import numpy as np
 import os
-import matplotlib.pyplot as plt
-import sys
 
 
 def img_resize(img, scale):
@@ -85,7 +83,7 @@ def get_mask(point, img_sz, r=30):
     ym_min = max(0, int(y - r))
     ym_max = min(h, int(y + r))
 
-    mask = np.zeros(frame.shape[:2], dtype="uint8")
+    mask = np.zeros(img_sz, dtype="uint8")
     cv2.rectangle(mask, (xm_min, ym_min), (xm_max, ym_max), 255, -1)
 
     return mask
@@ -141,11 +139,11 @@ def test_contours(img):
 def main():
     from glob import glob
     for fn in glob(os.getenv("DATA_PATH") + '/another-square.jpg'):
-        img = cv.imread(fn)
-        squares = find_squares(img)
-        cv.drawContours(img, squares, -1, (0, 255, 0), 3)
-        cv.imshow('squares', img)
-        ch = cv.waitKey()
+        img = cv2.imread(fn)
+        # squares = find_squares(img)
+        # cv2.drawContours(img, squares, -1, (0, 255, 0), 3)
+        cv2.imshow('squares', img)
+        ch = cv2.waitKey()
         if ch == 27:
             break
 
@@ -163,4 +161,4 @@ if __name__ == '__main__':
     assert img is not None, "file could not be read, check with os.path.exists()"
 
     main()
-    cv.destroyAllWindows()
+    cv2.destroyAllWindows()

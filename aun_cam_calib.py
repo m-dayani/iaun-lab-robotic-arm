@@ -2,70 +2,147 @@
 
 import cv2
 import numpy as np
-import sys
 import os
 import glob
 from scipy.spatial.transform import Rotation as scipyR
 import matplotlib.pyplot as plt
 
-from cameraModels import LabCamera
 
-sys.path.append('../mviz')
+class CamCalib:
+    def __init__(self, calib_path):
 
-# Defining the dimensions of checkerboard
-CHECKERBOARD = (6, 9)
-criteria = (cv2.TERM_CRITERIA_EPS + cv2.TERM_CRITERIA_MAX_ITER, 30, 0.001)
+        self.img_path = calib_path
 
-# Defining the world coordinates for 3D points
-objp = np.zeros((1, CHECKERBOARD[0] * CHECKERBOARD[1], 3), np.float32)
-objp[0, :, :2] = np.mgrid[0:CHECKERBOARD[0], 0:CHECKERBOARD[1]].T.reshape(-1, 2)
+        # Defining the dimensions of checkerboard
+        CHECKERBOARD = (6, 9)
+        self.CHECKERBOARD = CHECKERBOARD
+        self.criteria = (cv2.TERM_CRITERIA_EPS + cv2.TERM_CRITERIA_MAX_ITER, 30, 0.001)
 
+        # Defining the world coordinates for 3D points
+        self.objp = np.zeros((1, CHECKERBOARD[0] * CHECKERBOARD[1], 3), np.float32)
+        self.objp[0, :, :2] = np.mgrid[0:CHECKERBOARD[0], 0:CHECKERBOARD[1]].T.reshape(-1, 2)
 
-# prev_img_shape = None
+        # prev_img_shape = None
 
+        # Creating vector to store vectors of 3D points for each checkerboard image
+        self.objpoints = []
+        # Creating vector to store vectors of 2D points for each checkerboard image
+        self.imgpoints = []
 
-def find_image_world_pts(path_images, img_ext='png', img_show=False):
-    objpoints = []
-    imgpoints = []
-    img_size = []
-    n_processed_image = 0
+        self.img_size = []
+        self.n_images = 0
 
-    images = glob.glob(path_images + '/*.' + img_ext)
-    for fname in images:
-        img = cv2.imread(fname)
-        gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+    def set_images_path(self, path):
+        self.img_path = path
 
-        ret, corners = cv2.findChessboardCorners(gray, CHECKERBOARD, cv2.CALIB_CB_ADAPTIVE_THRESH +
+    def add_image(self, gray):
+
+        ret, corners = cv2.findChessboardCorners(gray, self.CHECKERBOARD, cv2.CALIB_CB_ADAPTIVE_THRESH +
                                                  cv2.CALIB_CB_FAST_CHECK + cv2.CALIB_CB_NORMALIZE_IMAGE)
-
+        corners2 = corners
         if ret:
-            objpoints.append(objp)
+            self.objpoints.append(self.objp)
             # refining pixel coordinates for given 2d points.
-            corners2 = cv2.cornerSubPix(gray, corners, (11, 11), (-1, -1), criteria)
+            corners2 = cv2.cornerSubPix(gray, corners, (11, 11), (-1, -1), self.criteria)
 
-            imgpoints.append(corners2)
+            self.imgpoints.append(corners2)
 
-            n_processed_image += 1
+            self.n_images += 1
+
+        return ret, corners2
+
+    def load_images(self, img_ext='png', img_show=False):
+
+        images = glob.glob(self.img_path + '/*.' + img_ext)
+        for fname in images:
+
+            img = cv2.imread(fname)
+            gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+
+            ret, corners = self.add_image(gray)
 
             # Draw and display the corners
-            if img_show:
-                img = cv2.drawChessboardCorners(img, CHECKERBOARD, corners2, ret)
+            if img_show and ret:
+                img = cv2.drawChessboardCorners(img, self.CHECKERBOARD, corners, ret)
+                cv2.imshow('img', img)
+                cv2.waitKey(0)
 
-        if img_show:
-            cv2.imshow('img', img)
+            if len(self.img_size) <= 0:
+                self.img_size = gray.shape[::-1]
+                # print(self.img_size)
+
+    def calibrate(self, K=None, D=None):
+        # Always load images before calling this
+        ret, mtx, dist, rvecs, tvecs = cv2.calibrateCamera(self.objpoints, self.imgpoints, self.img_size, K, D)
+        return ret, mtx, dist, rvecs, tvecs
+
+    def recalib(self, cam_obj, new_img, ws=1.0):
+
+        if cam_obj is None:
+            return False
+
+        # include old images
+        self.load_images()
+
+        if self.n_images < 9:
+            return False
+
+        # add the new image
+        corners = []
+        if len(new_img) > 0:
+            new_gray = cv2.cvtColor(new_img, cv2.COLOR_BGR2GRAY)
+            ret, corners = self.add_image(new_gray)
+            if not ret:
+                return False
+
+        # calibrate
+        self.objpoints = ws * np.float32(self.objpoints)
+        ret, mtx, dist, rvecs, tvecs = self.calibrate()
+
+        # the last estimate is what we want
+        robj = scipyR.from_rotvec(rvecs[-1].reshape((1, 3)).squeeze())
+        R_cw = robj.as_matrix()
+        t_cw = tvecs[-1].reshape((1, 3)).squeeze()
+
+        cam_obj.update_pose(R_cw, t_cw)
+        cam_obj.update_intrinsics(mtx)
+        cam_obj.D = dist.squeeze()
+        cam_obj.img_size = self.img_size
+        cam_obj.calibrated = True
+
+        cam_obj.update_homography()
+
+        if len(corners) > 0:
+            pts_img = corners.squeeze()
+            cam_obj.ax_x_img = [pts_img[0], pts_img[1]]
+            cam_obj.ax_y_img = [pts_img[0], pts_img[self.CHECKERBOARD[0]]]
+
+        return True
+
+        # pts_w = ws * np.float32(objp).squeeze()
+        # calc_reprojection_error(cam_obj, pts_w, pts_img)
+        # test_homography(cam_obj, pts_w, pts_img)
+
+    def refine_intrinsics(self, cam_obj, img, show_img=False):
+
+        K = cam_obj.K
+        D = cam_obj.D
+        img_size = cam_obj.img_size
+        # Refining the camera matrix using parameters obtained by calibration
+        K_new, roi = cv2.getOptimalNewCameraMatrix(K, D, img_size, 1, img_size)
+
+        # Method 1 to undistort the image
+        dst = cv2.undistort(img, K, D, None, K_new)
+
+        # Method 2 to undistort the image
+        mapx, mapy = cv2.initUndistortRectifyMap(K, D, None, K_new, img_size, 5)
+
+        dst = cv2.remap(img, mapx, mapy, cv2.INTER_LINEAR)
+
+        if show_img:
+            # Displaying the undistorted image
+            cv2.imshow("undistorted image", dst)
             cv2.waitKey(0)
-
-        if len(img_size) <= 0:
-            img_size = gray.shape[::-1]
-            print(img_size)
-
-    return objpoints, imgpoints, img_size, n_processed_image
-
-
-def calibrate_camera(objpoints, imgpoints, img_size, K=None, D=None):
-    ret, mtx, dist, rvecs, tvecs = cv2.calibrateCamera(objpoints, imgpoints, img_size, K, D)
-
-    return ret, mtx, dist, rvecs, tvecs
 
 
 def calc_reprojection_error(cam_model, pts_w, pts_img):
@@ -145,64 +222,6 @@ def test_homography(cam_model, pts_w, pts_img):
     err = abs(XY_homo[:, 0:2] - pts_w[:, 0:2])
 
 
-def recalib_camera(image_path, new_img, cam_obj, ws=1.0):
-    # include old images
-    objpoints, imgpoints, img_size, n_imgs = find_image_world_pts(image_path)
-
-    if n_imgs < 9:
-        return False
-
-    corners = None
-
-    # add the new image
-    if len(new_img) > 0:
-        gray = cv2.cvtColor(new_img, cv2.COLOR_BGR2GRAY)
-        ret, corners = cv2.findChessboardCorners(gray, CHECKERBOARD, cv2.CALIB_CB_ADAPTIVE_THRESH +
-                                                 cv2.CALIB_CB_FAST_CHECK + cv2.CALIB_CB_NORMALIZE_IMAGE)
-        if ret:
-            objpoints.append(objp)
-            corners2 = cv2.cornerSubPix(gray, corners, (11, 11), (-1, -1), criteria)
-            imgpoints.append(corners2)
-            corners = corners2
-        else:
-            return False
-
-    # calibrate
-    ret, mtx, dist, rvecs, tvecs = calibrate_camera(ws * np.float32(objpoints), imgpoints, img_size)
-
-    if cam_obj is None:
-        return False
-
-    # the last estimate is what we want
-    robj = scipyR.from_rotvec(rvecs[-1].reshape((1, 3)).squeeze())
-    R_cw = robj.as_matrix()
-    t_cw = tvecs[-1].reshape((1, 3)).squeeze()
-
-    cam_obj.update_pose(R_cw, t_cw)
-    cam_obj.update_intrinsics(mtx)
-    cam_obj.D = dist.squeeze()
-    cam_obj.calibrated = True
-
-    cam_obj.update_homography()
-
-    pts_img = corners.squeeze()
-    cam_obj.ax_x_img = [pts_img[0], pts_img[1]]
-    cam_obj.ax_y_img = [pts_img[0], pts_img[CHECKERBOARD[0]]]
-    cam_obj.img_size = img_size
-
-    return True
-
-    # pts_w = ws * np.float32(objp).squeeze()
-    # calc_reprojection_error(cam_obj, pts_w, pts_img)
-    # test_homography(cam_obj, pts_w, pts_img)
-
-
-def calib_camera(image_path, img_show=False):
-    objpoints, imgpoints, img_size, n_img = find_image_world_pts(image_path, img_show=img_show)
-
-    ret, mtx, dist, rvecs, tvecs = calibrate_camera(objpoints, imgpoints, img_size)
-
-
 def show_img_axis(img, cam_obj):
     img = cv2.line(img, np.int32(cam_obj.ax_x_img[0]), np.int32(cam_obj.ax_x_img[1]), (0, 0, 255))
     img = cv2.line(img, np.int32(cam_obj.ax_y_img[0]), np.int32(cam_obj.ax_y_img[1]), (0, 255, 0))
@@ -247,104 +266,23 @@ def draw_camera_and_wpts(cam_obj, pts_w, ws=1.0):
 def mouse_callback(event, x, y, flags, params):
     # right-click event value is 2
     if event == cv2.EVENT_LBUTTONDOWN:
-        print(cam_obj.unproject_homo([x, y]))
-
-
-cam_obj = LabCamera()
-
-# Defining the dimensions of checkerboard
-CHECKERBOARD = (6, 9)
-criteria = (cv2.TERM_CRITERIA_EPS + cv2.TERM_CRITERIA_MAX_ITER, 30, 0.001)
-
-# Creating vector to store vectors of 3D points for each checkerboard image
-objpoints = []
-# Creating vector to store vectors of 2D points for each checkerboard image
-imgpoints = []
-
-# Defining the world coordinates for 3D points
-objp = np.zeros((1, CHECKERBOARD[0] * CHECKERBOARD[1], 3), np.float32)
-objp[0, :, :2] = np.mgrid[0:CHECKERBOARD[0], 0:CHECKERBOARD[1]].T.reshape(-1, 2)
-prev_img_shape = None
-
-# Extracting path of individual image stored in a given directory
-images = glob.glob('./images3/*.png')
-for fname in images:
-    # print(fname)
-    img = cv2.imread(fname)
-    gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-    # Find the chess board corners
-    # If desired number of corners are found in the image then ret = true
-    ret, corners = cv2.findChessboardCorners(gray, CHECKERBOARD, cv2.CALIB_CB_ADAPTIVE_THRESH +
-                                             cv2.CALIB_CB_FAST_CHECK + cv2.CALIB_CB_NORMALIZE_IMAGE)
-
-    """
-    If desired number of corner are detected,
-    we refine the pixel coordinates and display 
-    them on the images of checker board
-    """
-    if ret == True:
-        objpoints.append(objp)
-        # refining pixel coordinates for given 2d points.
-        corners2 = cv2.cornerSubPix(gray, corners, (11, 11), (-1, -1), criteria)
-
-        imgpoints.append(corners2)
-
-        # Draw and display the corners
-        img = cv2.drawChessboardCorners(img, CHECKERBOARD, corners2, ret)
-
-    cv2.imshow('img', img)
-    cv2.waitKey(0)
-
-cv2.destroyAllWindows()
-
-h, w = img.shape[:2]
-
-"""
-Performing camera calibration by 
-passing the value of known 3D points (objpoints)
-and corresponding pixel coordinates of the 
-detected corners (imgpoints)
-"""
-ret, mtx, dist, rvecs, tvecs = cv2.calibrateCamera(objpoints, imgpoints, gray.shape[::-1], None, None)
-
-print("Camera matrix : \n")
-print(mtx)
-print("dist : \n")
-print(dist)
-print("rvecs : \n")
-print(rvecs)
-print("tvecs : \n")
-print(tvecs)
-
-# Using the derived camera parameters to undistort the image
-
-img = cv2.imread(images[5])
-# Refining the camera matrix using parameters obtained by calibration
-newcameramtx, roi = cv2.getOptimalNewCameraMatrix(mtx, dist, (w, h), 1, (w, h))
-
-# Method 1 to undistort the image
-dst = cv2.undistort(img, mtx, dist, None, newcameramtx)
-
-# Method 2 to undistort the image
-mapx, mapy = cv2.initUndistortRectifyMap(mtx, dist, None, newcameramtx, (w, h), 5)
-
-dst = cv2.remap(img, mapx, mapy, cv2.INTER_LINEAR)
-
-# Displaying the undistorted image
-cv2.imshow("undistorted image", dst)
-cv2.waitKey(0)
+        print([x, y])
 
 
 if __name__ == "__main__":
+
     data_dir = os.getenv('DATA_PATH')
     image_path = os.path.join(data_dir, 'aun-lab-calib')
     sample_image = os.path.join(data_dir, 'image0.png')
     img_show = cv2.imread(sample_image)
     new_img = cv2.cvtColor(img_show, cv2.COLOR_BGR2GRAY)
 
-    # calib_camera(image_path, img_show=True)
-    recalib_camera(image_path, new_img, cam_obj, ws=2.5)
+    camCalib = CamCalib(image_path)
+    camCalib.load_images()
+    camCalib.add_image(new_img)
+    camCalib.calibrate()
 
+    # camCalib.recalib(cam_obj, new_img, ws=2.5)
     # Visualizations
-    show_img_axis(img_show, cam_obj)
+    # show_img_axis(img_show, cam_obj)
     # draw_camera_and_wpts(cam_obj, objp.squeeze())

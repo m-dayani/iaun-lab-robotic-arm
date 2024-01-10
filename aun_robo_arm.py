@@ -2,15 +2,12 @@ import os
 import sys
 import numpy as np
 import cv2
-import time
-
-import matplotlib.pyplot as plt
-from scipy.spatial.transform import Rotation as scipyR
 
 from aun_arduino import MyArduino
-from aun_objdt_classic import TrackerKLT
+from aun_obj_det_classic import TrackerKLT
 from aun_imp_basics import calc_object_center, get_mask
-from aun_camera import LabCamera
+from aun_cam_model import LabCamera
+from aun_cam_calib import CamCalib
 
 
 px_loc = []
@@ -150,6 +147,9 @@ if __name__ == "__main__":
     px_sel_flag = False
     dt_patch_flag = dt_patch is not None and len(dt_patch) > 0
 
+    # Load Calibrator
+    myCalib = CamCalib(calib_path)
+
     # Open serial port (arduino)
     arduino = MyArduino('/dev/ttyACM0', 9600)
 
@@ -169,7 +169,7 @@ if __name__ == "__main__":
 
                 # If camera is not calibrated, calibrate the camera
                 if not my_cam.calibrated:
-                    res = my_cam.calibrate(calib_path)
+                    res = myCalib.recalib(my_cam, gray, ws=2.5)
                     if res:
                         my_cam.save_params(param_file)
                 else:

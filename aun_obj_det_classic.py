@@ -1,16 +1,10 @@
 import os
 import numpy as np
 import cv2
-import sys
-import collections
 from scipy.spatial.transform import Rotation as scipyR
 
-sys.path.append('./calib')
-from cameraCalibration import recalib_camera
-
 from hough_transform import find_circles
-
-# from aun_robo_arm import LabCamera
+from aun_imp_basics import img_resize, point_dist, get_mesh, smooth, calc_object_center
 
 
 # First version of square detector
@@ -172,77 +166,28 @@ def calib_square(points, K):
     t_cw = s * K_1 @ np.array([points[0, 1], points[0, 0], 1.0]).reshape((3, 1))
 
 
-def find_roi_thresh(th_img):
-    mask = th_img > 0
-    img_size = th_img.shape[:2]
-    x_min = 0
-    x_max = img_size[0]
-    y_min = 0
-    y_max = img_size[1]
-
-    if not mask.any():
-        return np.array([x_min, x_max, y_min, y_max])
-
-    X, Y = get_mesh(img_size)
-    pt_x = X[mask]
-    pt_y = Y[mask]
-
-    if len(pt_x) > 0:
-        x_min = pt_x[np.argmin(pt_x)]
-        x_max = pt_x[np.argmax(pt_x)]
-        y_min = pt_y[np.argmin(pt_y)]
-        y_max = pt_y[np.argmax(pt_y)]
-
-    return np.array([x_min, x_max, y_min, y_max])
-
-# for each of the contours detected, the shape of the contours is approximated using approxPolyDP()
-# function and the contours are drawn in the image using drawContours() function
-def detect_objects(contours, blank):
-    font_scale = 0.5
-    f_thick = 1
-    for count in contours:
-        epsilon = 0.01 * cv2.arcLength(count, True)
-        approximations = cv2.approxPolyDP(count, epsilon, True)
-        cv2.drawContours(blank, [approximations], 0, (0, 255, 0), 3)
-        # the name of the detected shapes are written on the image
-        i, j = approximations[0][0]
-        if len(approximations) == 3:
-            cv2.putText(blank, "Triangle", (i, j), cv2.FONT_HERSHEY_COMPLEX, font_scale, (0, 0, 255), f_thick)
-        elif len(approximations) == 4:
-            cv2.putText(blank, "Rectangle", (i, j), cv2.FONT_HERSHEY_COMPLEX, font_scale, (0, 0, 255), f_thick)
-        elif len(approximations) == 5:
-            cv2.putText(blank, "Pentagon", (i, j), cv2.FONT_HERSHEY_COMPLEX, font_scale, (0, 0, 255), f_thick)
-        elif 6 < len(approximations) < 15:
-            cv2.putText(blank, "Ellipse", (i, j), cv2.FONT_HERSHEY_COMPLEX, font_scale, (0, 0, 255), f_thick)
-        else:
-            cv2.putText(blank, "Circle", (i, j), cv2.FONT_HERSHEY_COMPLEX, font_scale, (0, 0, 255), f_thick)
-        # displaying the resulting image as the output on the screen
-        cv2.imshow("Resulting_image", blank)
-        cv2.waitKey(0)
-
-
 def angle_cos(p0, p1, p2):
     d1, d2 = (p0 - p1).astype('float'), (p2 - p1).astype('float')
     return abs(np.dot(d1, d2) / np.sqrt(np.dot(d1, d1) * np.dot(d2, d2)))
 
 
 def find_squares(img):
-    img = cv.GaussianBlur(img, (5, 5), 0)
+    img = cv2.GaussianBlur(img, (5, 5), 0)
     squares = []
-    for gray in cv.split(img):
-        for thrs in xrange(0, 255, 26):
+    for gray in cv2.split(img):
+        for thrs in range(0, 255, 26):
             if thrs == 0:
-                bin = cv.Canny(gray, 0, 50, apertureSize=5)
-                bin = cv.dilate(bin, None)
+                bin = cv2.Canny(gray, 0, 50, apertureSize=5)
+                bin = cv2.dilate(bin, None)
             else:
-                _retval, bin = cv.threshold(gray, thrs, 255, cv.THRESH_BINARY)
-            contours, _hierarchy = cv.findContours(bin, cv.RETR_LIST, cv.CHAIN_APPROX_SIMPLE)
+                _retval, bin = cv2.threshold(gray, thrs, 255, cv2.THRESH_BINARY)
+            contours, _hierarchy = cv2.findContours(bin, cv2.RETR_LIST, cv2.CHAIN_APPROX_SIMPLE)
             for cnt in contours:
-                cnt_len = cv.arcLength(cnt, True)
-                cnt = cv.approxPolyDP(cnt, 0.02 * cnt_len, True)
-                if len(cnt) == 4 and cv.contourArea(cnt) > 1000 and cv.isContourConvex(cnt):
+                cnt_len = cv2.arcLength(cnt, True)
+                cnt = cv2.approxPolyDP(cnt, 0.02 * cnt_len, True)
+                if len(cnt) == 4 and cv2.contourArea(cnt) > 1000 and cv2.isContourConvex(cnt):
                     cnt = cnt.reshape(-1, 2)
-                    max_cos = np.max([angle_cos(cnt[i], cnt[(i + 1) % 4], cnt[(i + 2) % 4]) for i in xrange(4)])
+                    max_cos = np.max([angle_cos(cnt[i], cnt[(i + 1) % 4], cnt[(i + 2) % 4]) for i in range(4)])
                     if max_cos < 0.104:
                         squares.append(cnt)
     return squares
@@ -285,6 +230,56 @@ def test_squares(base_dir):
     cv2.waitKey(0)
 
 
+def find_roi_thresh(th_img):
+    mask = th_img > 0
+    img_size = th_img.shape[:2]
+    x_min = 0
+    x_max = img_size[0]
+    y_min = 0
+    y_max = img_size[1]
+
+    if not mask.any():
+        return np.array([x_min, x_max, y_min, y_max])
+
+    X, Y = get_mesh(img_size)
+    pt_x = X[mask]
+    pt_y = Y[mask]
+
+    if len(pt_x) > 0:
+        x_min = pt_x[np.argmin(pt_x)]
+        x_max = pt_x[np.argmax(pt_x)]
+        y_min = pt_y[np.argmin(pt_y)]
+        y_max = pt_y[np.argmax(pt_y)]
+
+    return np.array([x_min, y_min, x_max, y_max])
+
+
+# for each of the contours detected, the shape of the contours is approximated using approxPolyDP()
+# function and the contours are drawn in the image using drawContours() function
+def detect_objects(contours, blank):
+    font_scale = 0.5
+    f_thick = 1
+    for count in contours:
+        epsilon = 0.01 * cv2.arcLength(count, True)
+        approximations = cv2.approxPolyDP(count, epsilon, True)
+        cv2.drawContours(blank, [approximations], 0, (0, 255, 0), 3)
+        # the name of the detected shapes are written on the image
+        i, j = approximations[0][0]
+        if len(approximations) == 3:
+            cv2.putText(blank, "Triangle", (i, j), cv2.FONT_HERSHEY_COMPLEX, font_scale, (0, 0, 255), f_thick)
+        elif len(approximations) == 4:
+            cv2.putText(blank, "Rectangle", (i, j), cv2.FONT_HERSHEY_COMPLEX, font_scale, (0, 0, 255), f_thick)
+        elif len(approximations) == 5:
+            cv2.putText(blank, "Pentagon", (i, j), cv2.FONT_HERSHEY_COMPLEX, font_scale, (0, 0, 255), f_thick)
+        elif 6 < len(approximations) < 15:
+            cv2.putText(blank, "Ellipse", (i, j), cv2.FONT_HERSHEY_COMPLEX, font_scale, (0, 0, 255), f_thick)
+        else:
+            cv2.putText(blank, "Circle", (i, j), cv2.FONT_HERSHEY_COMPLEX, font_scale, (0, 0, 255), f_thick)
+        # displaying the resulting image as the output on the screen
+        cv2.imshow("Resulting_image", blank)
+        cv2.waitKey(0)
+
+
 def track_hough_circles(img, last_img):
     # smooth both images
     img_s = smooth(img)
@@ -298,7 +293,7 @@ def track_hough_circles(img, last_img):
 
     # find ROI
     roi = find_roi_thresh(thresh)
-    center_roi = [(roi[0] + roi[1]) * 0.5, (roi[2] + roi[3]) * 0.5]
+    center_roi = [(roi[0] + roi[2]) * 0.5, (roi[1] + roi[3]) * 0.5]
 
     # find circles
     circles = find_circles(img_s, hparams=(8, 60, 30, 10, 70))
