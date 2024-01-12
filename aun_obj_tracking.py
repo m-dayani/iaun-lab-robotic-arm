@@ -2,17 +2,24 @@ import os
 import cv2
 import glob
 import numpy as np
-import matplotlib.pyplot as plt
+# import matplotlib.pyplot as plt
 
 from aun_imp_basics import calc_object_center
 
 (major_ver, minor_ver, subminor_ver) = cv2.__version__.split('.')
+
+# Some methods to locate an object in the image:
+#   1. Template matching/registration
+#   2. Feature extraction/matching (e.g. ORB features)
+#   3. Deep learning
 
 
 class Tracker:
     def __init__(self):
         # print('base tracker')
         self.last_point = [-1, -1]
+        self.initialized = False
+        self.patch = []
 
     def inject_point(self, point):
         # print('base inject point ' + str(self))
@@ -30,6 +37,13 @@ class Tracker:
 
     def update(self, frame):
         print('base update ' + str(self))
+
+    def get_patch(self):
+        # print('base get patch: ' + str(self))
+        return self.patch
+
+    def save_patch(self, file_name):
+        cv2.imwrite(file_name, self.patch)
 
 
 class TrackerLK(Tracker):
@@ -96,15 +110,19 @@ class TrackerCV(Tracker):
 
     def init(self, frame, bbox):
         if self.tracker is not None:
+            bbox = Tracker.detect_roi(frame, bbox)
             ok = self.tracker.init(frame, bbox)
-            return ok
+            self.initialized = ok
+            px_loc = np.array([(bbox[0]+bbox[2])*0.5, (bbox[1]+bbox[3])*0.5])
+            self.last_point = px_loc
+            return ok, px_loc
         return False
 
     def update(self, frame):
         if self.tracker is not None:
             ok, bbox = self.tracker.update(frame)
             return ok, bbox
-        return False, []
+        return False, self.last_point
 
 
 class TrackerTM(Tracker):
@@ -124,13 +142,15 @@ class TrackerTM(Tracker):
 
         self.last_point = calc_object_center(self.patch)
 
+        return True, self.last_point
+
     def update(self, frame):
 
         # Template Matching (find ROI)
         tm_res = cv2.matchTemplate(frame, self.patch, cv2.TM_SQDIFF_NORMED)
         _, _, tm_loc, _ = cv2.minMaxLoc(tm_res)
 
-        return np.array([tm_loc[0], tm_loc[1], 30, 30])
+        return True, np.array([tm_loc[0], tm_loc[1], 30, 30])
 
 
 class TrackerMS(Tracker):
@@ -144,6 +164,8 @@ class TrackerMS(Tracker):
 
     def init(self, frame, bbox):
 
+        bbox = Tracker.detect_roi(frame, bbox)
+
         (x, y, w, h) = bbox
         track_window = bbox
         roi = frame[y:y + h, x:x + w]
@@ -155,8 +177,9 @@ class TrackerMS(Tracker):
 
         self.roi_hist = roi_hist
         self.track_window = track_window
+        self.initialized = True
 
-        return True
+        return True, np.array([(x+w)*0.5, (y+h)*0.5])
 
     def update(self, frame):
         hsv = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
@@ -172,6 +195,35 @@ class TrackerMS(Tracker):
         self.track_window = track_window
 
         return ret, track_window
+
+
+def track_klt_of(trackerKLT, frame):
+
+    global point_updated
+    global px_loc
+
+    if point_updated:
+        point_updated = False
+        mask = []   # get_mask(px_loc, frame.shape[:2])
+        trackerKLT.initialize(frame, mask)
+        trackerKLT.updatePoints(np.concatenate([np.array([[px_loc]]), trackerKLT.p0], axis=0))
+
+        return px_loc
+    else:
+        if trackerKLT.is_initialized:
+            trackerKLT.track(frame)
+            good_new = trackerKLT.p1
+            if trackerKLT.p1 is not None:
+                st = trackerKLT.st
+                good_new = trackerKLT.p1[st == 1]
+
+                if good_new is None or len(good_new) <= 0:
+                    return []
+
+            trackerKLT.updatePoints(good_new.reshape(-1, 1, 2))
+            return good_new[0]
+        else:
+            return []
 
 
 def test_klt_of(base_dir):

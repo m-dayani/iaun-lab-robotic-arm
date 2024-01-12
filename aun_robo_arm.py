@@ -4,16 +4,10 @@ import numpy as np
 import cv2
 
 from aun_arduino import MyArduino
-from aun_obj_tracking import TrackerLK
-from aun_imp_basics import calc_object_center, get_mask
+from aun_obj_tracking import TrackerCV, TrackerMS
 from aun_cam_model import LabCamera
 from aun_cam_calib import CamCalib
 
-
-# Some methods to locate an object in the image:
-#   1. Template matching/registration
-#   2. Feature extraction/matching (e.g. ORB features)
-#   3. Deep learning
 
 px_loc = []
 point_updated = False
@@ -32,54 +26,6 @@ def mouse_callback(event, x, y, flags, params):
         px_loc = np.array([x, y])
         # print(cam.unproject_homo(px_loc))
         point_updated = True
-
-
-def detect_object(frame, patch, obj_center):
-
-    gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-    if patch is None or len(patch) <= 0:
-        points = cv2.selectROI(frame, False)
-        xy0 = np.array(points[0:2])
-        wh0 = xy0 + np.array(points[2:4])
-        patch = gray[xy0[1]:wh0[1], xy0[0]:wh0[0]]
-
-    if len(obj_center) <= 0:
-        obj_center = calc_object_center(patch)
-
-    # Template Matching (find ROI)
-    tm_res = cv2.matchTemplate(gray, patch, cv2.TM_SQDIFF_NORMED)
-    _, _, tm_loc, _ = cv2.minMaxLoc(tm_res)
-
-    return np.array(tm_loc) + obj_center, patch, obj_center
-
-
-def track_klt_of(trackerKLT, frame):
-
-    global point_updated
-    global px_loc
-
-    if point_updated:
-        point_updated = False
-        mask = get_mask(px_loc, frame.shape[:2])
-        trackerKLT.initialize(frame, mask)
-        trackerKLT.updatePoints(np.concatenate([np.array([[px_loc]]), trackerKLT.p0], axis=0))
-
-        return px_loc
-    else:
-        if trackerKLT.is_initialized:
-            trackerKLT.track(frame)
-            good_new = trackerKLT.p1
-            if trackerKLT.p1 is not None:
-                st = trackerKLT.st
-                good_new = trackerKLT.p1[st == 1]
-
-                if good_new is None or len(good_new) <= 0:
-                    return []
-
-            trackerKLT.updatePoints(good_new.reshape(-1, 1, 2))
-            return good_new[0]
-        else:
-            return []
 
 
 class Robustify:
@@ -135,72 +81,68 @@ if __name__ == "__main__":
         data_dir = '.'
     img_ext = '.png'
 
-    calib_path = os.path.join(data_dir, 'images')
-    param_file = os.path.join(data_dir, 'lab-cam-params.pkl')
-    dt_patch_file = os.path.join(data_dir, 'ball_patch.png')
+    calib_path = os.path.join(data_dir, 'calib', 'images')
+    param_file = os.path.join(data_dir, 'calib', 'params', 'lab-cam-params.pkl')
+    dt_patch_file = os.path.join(data_dir, 'obj_det', 'obj_lid', 'ball_patch.png')
 
-    # try to load camera parameters
-    my_cam = LabCamera(np.array([640, 480]), 2)
+    # Load camera and parameters
+    my_cam = LabCamera(2, (640, 480))
     my_cam.load_params(param_file)
 
-    dt_patch = cv2.imread(dt_patch_file, cv2.IMREAD_GRAYSCALE)
-    obj_center = []
-    px_sel_flag = False
-    dt_patch_flag = dt_patch is not None and len(dt_patch) > 0
-
-    # Load Calibrator
+    # Load calibrator
     myCalib = CamCalib(calib_path)
 
     # Open serial port (arduino)
     arduino = MyArduino('/dev/ttyACM0', 9600)
 
-    # KLT optical flow tracker
-    trackerKLT = TrackerLK()
+    # Load Tracker
+    tracker = TrackerMS()
 
-    # Limits and Averaging
+    # Limits and averaging
     rbst = Robustify()
 
+    mouse_cb_flag = False
+
     # Main Loop
-    while True:  # int(time.time() - start_time) < capture_duration:
+    while True:
         try:
             ret, frame = my_cam.get_next()
-            gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
             if ret:
                 img_show = np.copy(frame)
+                gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
 
-                # If camera is not calibrated, calibrate the camera
                 if not my_cam.calibrated:
+                    # Camera Calibration
                     res = myCalib.recalib(my_cam, gray, ws=2.5)
                     if res:
                         my_cam.save_params(param_file)
+                    else:
+                        # show a message
+                        print('ERROR: Camera is not calibrated')
                 else:
-                    # Else, track object
-                    # px_loc = track_klt_of(trackerKLT, gray)
-                    # if len(px_loc) <= 0:
-                    px_loc, dt_patch, obj_center = detect_object(frame, dt_patch, obj_center)
-
-                    if not dt_patch_flag:
-                        cv2.imwrite(dt_patch_file, dt_patch)
+                    if not tracker.initialized:
+                        ret, px_loc = tracker.init(frame, [])
+                        # px_loc = tracker.last_point
+                    else:
+                        ret, px_loc = tracker.update(frame)
 
                     w_loc = my_cam.unproject_homo(px_loc)
-
                     w_loc = rbst.process(w_loc)
 
                     img_txt = f'(%.2f, %.2f)' % (w_loc[0], w_loc[1])
                     # NOTE: first space is essential for Arduino to correctly parse the first number
                     loc_txt = f' %.2f %.2f' % (w_loc[0], w_loc[1])
-                    cv2.putText(img_show, img_txt, np.int32(px_loc), cv2.FONT_HERSHEY_PLAIN, 1.4, (0, 255, 0))
-                    cv2.drawMarker(img_show, np.int32(px_loc), (0, 0, 255), cv2.MARKER_CROSS, 2, 2)
+                    loc_int = np.int32(px_loc[0:2])
+                    cv2.putText(img_show, img_txt, loc_int, cv2.FONT_HERSHEY_PLAIN, 1.4, (0, 255, 0))
+                    cv2.drawMarker(img_show, loc_int, (0, 0, 255), cv2.MARKER_CROSS, 8, 2)
 
                     # todo: Publish a pose message to the listeners
                     msg_ret = arduino.transmit(loc_txt)
-                    # print(msg_ret)
 
                 cv2.imshow("USB_CAM", img_show)
-
-                if not px_sel_flag:
+                if not mouse_cb_flag:
                     cv2.setMouseCallback('USB_CAM', mouse_callback)
-                    px_sel_flag = True
+                    mouse_cb_flag = True
 
                 if cv2.waitKey(1) & 0xFF == ord('q'):
                     break
@@ -208,6 +150,8 @@ if __name__ == "__main__":
                 break
         except RuntimeError:
             break
+
+    # tracker.save_patch(dt_patch_file)
 
     arduino.close()
     my_cam.close()
