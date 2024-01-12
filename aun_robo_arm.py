@@ -4,11 +4,16 @@ import numpy as np
 import cv2
 
 from aun_arduino import MyArduino
-from aun_obj_det_classic import TrackerKLT
+from aun_obj_tracking import TrackerLK
 from aun_imp_basics import calc_object_center, get_mask
 from aun_cam_model import LabCamera
 from aun_cam_calib import CamCalib
 
+
+# Some methods to locate an object in the image:
+#   1. Template matching/registration
+#   2. Feature extraction/matching (e.g. ORB features)
+#   3. Deep learning
 
 px_loc = []
 point_updated = False
@@ -30,10 +35,6 @@ def mouse_callback(event, x, y, flags, params):
 
 
 def detect_object(frame, patch, obj_center):
-    # Some methods to locate an object in the image:
-    #   1. Template matching/registration
-    #   2. Feature extraction/matching (e.g. ORB features)
-    #   3. Deep learning
 
     gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
     if patch is None or len(patch) <= 0:
@@ -154,7 +155,7 @@ if __name__ == "__main__":
     arduino = MyArduino('/dev/ttyACM0', 9600)
 
     # KLT optical flow tracker
-    trackerKLT = TrackerKLT()
+    trackerKLT = TrackerLK()
 
     # Limits and Averaging
     rbst = Robustify()
