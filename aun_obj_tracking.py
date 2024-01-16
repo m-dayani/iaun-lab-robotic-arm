@@ -14,6 +14,10 @@ from aun_imp_basics import calc_object_center
 #   3. Deep learning
 
 
+def get_loc_from_bbox(bbox):
+    return np.array([bbox[0] + bbox[2] * 0.5, bbox[1] + bbox[3] * 0.5])
+
+
 class Tracker:
     def __init__(self):
         # print('base tracker')
@@ -113,7 +117,7 @@ class TrackerCV(Tracker):
             bbox = Tracker.detect_roi(frame, bbox)
             ok = self.tracker.init(frame, bbox)
             self.initialized = ok
-            px_loc = np.array([(bbox[0]+bbox[2])*0.5, (bbox[1]+bbox[3])*0.5])
+            px_loc = get_loc_from_bbox(bbox)
             self.last_point = px_loc
             return ok, px_loc
         return False
@@ -121,7 +125,8 @@ class TrackerCV(Tracker):
     def update(self, frame):
         if self.tracker is not None:
             ok, bbox = self.tracker.update(frame)
-            return ok, bbox
+            px_loc = get_loc_from_bbox(bbox)
+            return ok, px_loc
         return False, self.last_point
 
 

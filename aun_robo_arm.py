@@ -96,7 +96,7 @@ if __name__ == "__main__":
     arduino = MyArduino('/dev/ttyACM0', 9600)
 
     # Load Tracker
-    tracker = TrackerMS()
+    tracker = TrackerCV()
 
     # Limits and averaging
     rbst = Robustify()
