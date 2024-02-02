@@ -50,7 +50,7 @@ def capture_video():
 
 def capture_image(i):
 
-    cam_port = 2
+    cam_port = 1
     cam = cv2.VideoCapture(cam_port)
 
     result, image = cam.read()

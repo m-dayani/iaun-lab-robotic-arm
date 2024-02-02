@@ -4,7 +4,7 @@ import numpy as np
 import cv2
 
 from aun_arduino import MyArduino
-from aun_obj_tracking import TrackerCV, TrackerMS
+from aun_obj_tracking import TrackerCV  #, TrackerMS
 from aun_cam_model import LabCamera
 from aun_cam_calib import CamCalib
 
@@ -86,7 +86,7 @@ if __name__ == "__main__":
     dt_patch_file = os.path.join(data_dir, 'obj_det', 'obj_lid', 'ball_patch.png')
 
     # Load camera and parameters
-    my_cam = LabCamera(2, (640, 480))
+    my_cam = LabCamera(0, (640, 480))
     my_cam.load_params(param_file)
 
     # Load calibrator
