@@ -24,11 +24,14 @@ if __name__ == "__main__":
     img_file = os.path.join(data_dir, '21420839085_e2fa3bffa8_c.jpg')
     video_file = os.path.join(data_dir, 'video.mp4')
 
-    image = cv2.imread(img_file, cv2.IMREAD_UNCHANGED)
+    # image = cv2.imread(img_file, cv2.IMREAD_UNCHANGED)
+    #
+    # tracker = TrackerYOLO()
+    # tracker.init(image, [])
+    #
+    # for i in range(10):
+    #     tracker.update(image)
 
-    tracker = TrackerYOLO()
-    tracker.init(image, [])
-
-    for i in range(10):
-        tracker.update(image)
+    model = YOLO('best_CAP.pt')
+    results = model(source="2", show=True, conf=0.9, save=False)
 

@@ -4,8 +4,8 @@ import os
 
 
 def capture_video():
-    captured_duration=10
-    cap = cv2.VideoCapture(2)
+    captured_duration=200
+    cap = cv2.VideoCapture(1)
 
     cap.set(cv2.CAP_PROP_FOURCC, cv2.VideoWriter_fourcc('U', 'Y', 'V', 'Y'))
     cap.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
@@ -34,7 +34,7 @@ def capture_video():
 
         ret, frame = cap.read()
         if ret:
-            cv2.imwrite(image_dir + str(i) + img_ext, frame)
+            # cv2.imwrite(image_dir + str(i) + img_ext, frame)
             i += 1
             result.write(frame)
             cv2.imshow("OpenCVCam", frame)
@@ -50,7 +50,7 @@ def capture_video():
 
 def capture_image(i):
 
-    cam_port = 1
+    cam_port = -1
     cam = cv2.VideoCapture(cam_port)
 
     result, image = cam.read()
@@ -86,7 +86,7 @@ def capture_image(i):
 
 if __name__ == '__main__':
 
-    # capture_video()
+    capture_video()
 
-    for i in range(10):
-        capture_image(50+i)
+    # for i in range(10):
+    #     capture_image(50+i)

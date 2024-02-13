@@ -126,6 +126,7 @@ class TrackerCV(Tracker):
         if self.tracker is not None:
             ok, bbox = self.tracker.update(frame)
             px_loc = get_loc_from_bbox(bbox)
+            self.last_point = px_loc
             return ok, px_loc
         return False, self.last_point
 
@@ -197,9 +198,10 @@ class TrackerMS(Tracker):
         else:
             ret, track_window = cv2.meanShift(dst, self.track_window, self.term_crit)
 
+        px_loc = get_loc_from_bbox(track_window)
         self.track_window = track_window
 
-        return ret, track_window
+        return ret, px_loc
 
 
 def track_klt_of(trackerKLT, frame):

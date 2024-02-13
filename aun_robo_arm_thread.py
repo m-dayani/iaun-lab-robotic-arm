@@ -8,7 +8,7 @@ import threading
 # import concurrent.futures
 
 from aun_arduino import MyArduino
-from aun_obj_tracking import TrackerCV  #, TrackerMS
+from aun_obj_tracking import TrackerCV, TrackerMS
 from aun_cam_model import LabCamera
 from aun_cam_calib import CamCalib
 
@@ -85,8 +85,10 @@ class Robustify:
 
 
 class CamCapture:
-    def __init__(self):
+    def __init__(self, fps):
         self.is_running = False
+        self.fps = fps
+        self.T = 1.0 / float(fps)
 
     def run(self):
 
@@ -98,6 +100,9 @@ class CamCapture:
 
         self.is_running = True
         while self.is_running:
+
+            t0 = time.perf_counter()
+
             try:
                 if my_cam is not None:
                     ret, frame = my_cam.get_next()
@@ -109,6 +114,11 @@ class CamCapture:
             if proc_finished:
                 self.is_running = False
                 break
+
+            t1 = time.perf_counter()
+            dt = t1 - t0
+            if dt < self.T:
+                time.sleep(self.T - dt)
 
 
 class ArduinoThread(MyArduino):
@@ -188,6 +198,7 @@ class TrackingThread:
         self.tracker = TrackerCV()
         # Limits and averaging
         self.rbst = Robustify()
+        self.ini_delay = 50
 
     def run(self):
 
@@ -198,6 +209,11 @@ class TrackingThread:
         global w_loc
         global px_loc
 
+        max_cnt = 100
+        cnt = 0
+        t_cols = 2
+        time_stat = np.zeros((max_cnt, t_cols))
+
         self.is_running = True
         while self.is_running:
             if ret:
@@ -207,13 +223,18 @@ class TrackingThread:
                     ret1, px_loc = self.tracker.update(frame)
 
                 t1 = time.perf_counter()
-                print(t1 - t0)
 
                 w_loc = my_cam.unproject_homo(px_loc)
-                # w_loc = rbst.process(w_loc)
+                # w_loc = self.rbst.process(w_loc)
 
                 t2 = time.perf_counter()
-                print(t2 - t1)
+
+                time_stat[(cnt % max_cnt), :] = (t1 - t0, t2 - t1)
+                if (cnt % max_cnt) == 0:
+                    print(np.mean(time_stat, axis=0))
+                    if cnt > 0:
+                        cnt = 0
+                cnt += 1
 
             if proc_finished:
                 self.is_running = False
@@ -227,6 +248,8 @@ class TrackingThread:
         global px_loc
         global mouse_cb_flag
 
+        delay = 0
+
         while not self.initialized:
             try:
                 ret, frame = my_cam.get_next()
@@ -234,20 +257,23 @@ class TrackingThread:
                     img_show = np.copy(frame)
                     gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
 
-                    if not my_cam.calibrated:
-                        # Camera Calibration
-                        res = self.myCalib.recalib(my_cam, gray, ws=2.5)
-                        if res:
-                            my_cam.save_params(param_file)
+                    # give time to open and initialize the camera
+                    if delay > self.ini_delay:
+                        if not my_cam.calibrated:
+                            # Camera Calibration
+                            res = self.myCalib.recalib(my_cam, gray, ws=2.5)
+                            if res:
+                                my_cam.save_params(param_file)
+                            else:
+                                # show a message
+                                print('ERROR: Camera is not calibrated')
                         else:
-                            # show a message
-                            print('ERROR: Camera is not calibrated')
-                    else:
-                        if not self.tracker.initialized:
-                            ret1, px_loc = self.tracker.init(frame, [])
-                            if self.tracker.initialized:
-                                self.initialized = True
+                            if not self.tracker.initialized:
+                                ret1, px_loc = self.tracker.init(frame, [])
+                                if self.tracker.initialized:
+                                    self.initialized = True
 
+                    delay += 1
                     cv2.imshow("USB_CAM", img_show)
                     if not mouse_cb_flag:
                         cv2.setMouseCallback('USB_CAM', mouse_callback)
@@ -271,12 +297,13 @@ if __name__ == "__main__":
     calib_path = os.path.join(data_dir, 'calib', 'images')
     param_file = os.path.join(data_dir, 'calib', 'params', 'lab-cam-params.pkl')
     dt_patch_file = os.path.join(data_dir, 'obj_det', 'obj_lid', 'ball_patch.png')
+    fps = 24
 
     # Load camera and parameters
     my_cam = LabCamera(0, (640, 480))
     my_cam.load_params(param_file)
 
-    cam_capture = CamCapture()
+    cam_capture = CamCapture(fps)
     cam_view = VizThread()
 
     # Open serial port (arduino)
