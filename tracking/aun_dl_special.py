@@ -9,7 +9,7 @@ from aun_obj_tracking import Tracker
 class TrackerYOLO(Tracker):
     def __init__(self):
         super().__init__()
-        self.model = YOLO('best_CAP.pt')
+        self.model = YOLO('yolov8n.pt')
 
     def annotate_frame(self, res, frame):
         img = None
@@ -44,7 +44,6 @@ if __name__ == "__main__":
     video_file = os.path.join(data_dir, 'video.mp4')
 
     tracker = TrackerYOLO()
-
     cap = cv2.VideoCapture(0)
 
     while True:

@@ -3,10 +3,10 @@ import sys
 import numpy as np
 import cv2
 
-from aun_arduino import MyArduino
-from aun_obj_tracking import TrackerCV  #, TrackerMS
-from aun_cam_model import LabCamera
-from aun_cam_calib import CamCalib
+from ..serial.aun_arduino import MyArduino
+from ..tracking.aun_obj_tracking import TrackerCV, TrackerMS
+from ..cam_calib.aun_cam_model import LabCamera
+from ..cam_calib.aun_cam_calib import CamCalib
 
 
 px_loc = []
