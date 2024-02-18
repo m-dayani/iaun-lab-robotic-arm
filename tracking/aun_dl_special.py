@@ -9,7 +9,7 @@ from aun_obj_tracking import Tracker
 class TrackerYOLO(Tracker):
     def __init__(self):
         super().__init__()
-        self.model = YOLO('yolov8n.pt')
+        self.model = YOLO('../models/yolov8n.pt')
 
     def annotate_frame(self, res, frame):
         img = None

@@ -2,9 +2,11 @@ import os
 import cv2
 import glob
 import numpy as np
+import sys
 # import matplotlib.pyplot as plt
 
-from ..imp_basics.aun_imp_basics import calc_object_center
+sys.path.append('..')
+from imp_basics.aun_imp_basics import calc_object_center
 
 (major_ver, minor_ver, subminor_ver) = cv2.__version__.split('.')
 

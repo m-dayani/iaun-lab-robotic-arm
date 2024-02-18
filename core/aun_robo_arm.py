@@ -3,11 +3,11 @@ import sys
 import numpy as np
 import cv2
 
-from ..serial.aun_arduino import MyArduino
-from ..tracking.aun_obj_tracking import TrackerCV, TrackerMS
-from ..cam_calib.aun_cam_model import LabCamera
-from ..cam_calib.aun_cam_calib import CamCalib
-
+sys.path.append('..')
+from serial.aun_arduino import MyArduino
+from tracking.aun_obj_tracking import TrackerCV, TrackerMS
+from cam_calib.aun_cam_model import LabCamera
+from cam_calib.aun_cam_calib import CamCalib
 
 px_loc = []
 point_updated = False
@@ -19,7 +19,6 @@ def signal_handler(sig, frame):
 
 
 def mouse_callback(event, x, y, flags, params):
-
     global px_loc
     global point_updated
     if event == cv2.EVENT_LBUTTONDOWN:
