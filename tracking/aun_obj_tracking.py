@@ -4,7 +4,7 @@ import glob
 import numpy as np
 # import matplotlib.pyplot as plt
 
-from aun_imp_basics import calc_object_center
+from ..imp_basics.aun_imp_basics import calc_object_center
 
 (major_ver, minor_ver, subminor_ver) = cv2.__version__.split('.')
 

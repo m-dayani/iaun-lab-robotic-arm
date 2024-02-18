@@ -4,7 +4,7 @@ import cv2
 from scipy.spatial.transform import Rotation as scipyR
 
 from hough_transform import find_circles
-from aun_imp_basics import img_resize, point_dist, get_mesh, smooth, calc_object_center
+from ..imp_basics.aun_imp_basics import img_resize, point_dist, get_mesh, smooth, calc_object_center
 
 
 # First version of square detector
@@ -390,5 +390,5 @@ if __name__ == "__main__":
     base_dir = os.getenv('DATA_PATH')
     # test_squares(base_dir)
     # test_hough_circles(base_dir)
-    test_klt_of(base_dir)
+    # test_klt_of(base_dir)
 
