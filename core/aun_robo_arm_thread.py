@@ -9,8 +9,9 @@ import threading
 # import concurrent.futures
 
 sys.path.append('..')
-from serial.aun_arduino import MyArduino
+from my_serial.aun_arduino import MyArduino
 from tracking.aun_obj_tracking import TrackerCV, TrackerMS
+from tracking.aun_dl_special import TrackerYOLO
 from cam_calib.aun_cam_model import LabCamera
 from cam_calib.aun_cam_calib import CamCalib
 
@@ -195,7 +196,7 @@ class TrackingThread:
         # Load calibrator
         self.myCalib = CamCalib(calib_path)
         # Load Tracker
-        self.tracker = TrackerCV()
+        self.tracker = TrackerYOLO()
         # Limits and averaging
         self.rbst = Robustify()
         self.ini_delay = 50

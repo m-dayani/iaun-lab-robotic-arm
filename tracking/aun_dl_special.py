@@ -9,7 +9,7 @@ from aun_obj_tracking import Tracker
 class TrackerYOLO(Tracker):
     def __init__(self):
         super().__init__()
-        self.model = YOLO('../models/yolov8n.pt')
+        self.model = YOLO('../models/m_omoumi_cap.pt')
 
     def annotate_frame(self, res, frame):
         img = None
@@ -23,18 +23,36 @@ class TrackerYOLO(Tracker):
             img = annotator.result()
         return img
 
+    def get_bboxes(self, res):
+        bboxes = dict()
+        for r in res:
+            boxes = r.boxes
+            for box in boxes:
+                b = box.xyxy[0]
+                c = box.cls
+                if self.model.names[int(c)] not in bboxes.keys():
+                    bboxes[self.model.names[int(c)]] = []
+                bboxes[self.model.names[int(c)]].append(b.numpy())
+        return bboxes
+
+    def get_last_point(self, list_bbox):
+        if 'Cap' in list_bbox.keys():
+            bbox = list_bbox['Cap'][0]
+            self.last_point = [bbox[0] * 0.5 + bbox[2] * 0.5, bbox[1] * 0.5 + bbox[3] * 0.5]
+        return self.last_point
+
     def init(self, frame, bbox):
         res = self.model.predict(source=frame, show=False, save=False, conf=0.5)
         # Tracking with default tracker
         # res = self.model.track(source=frame, show=False, save=False, conf=0.5)
-        img = self.annotate_frame(res, frame)
-        return res, img
+        list_bbox = self.get_bboxes(res)
+        return self.get_last_point(list_bbox)
 
     def update(self, frame):
         res = self.model.predict(source=frame, show=False, save=False, conf=0.5)
         # res = self.model.track(source=frame, show=False, save=False, conf=0.5)
-        img = self.annotate_frame(res, frame)
-        return res, img
+        list_bbox = self.get_bboxes(res)
+        return self.get_last_point(list_bbox)
 
 
 if __name__ == "__main__":
@@ -44,7 +62,7 @@ if __name__ == "__main__":
     video_file = os.path.join(data_dir, 'video.mp4')
 
     tracker = TrackerYOLO()
-    cap = cv2.VideoCapture(0)
+    cap = cv2.VideoCapture(2)
 
     while True:
         ret, frame = cap.read()
@@ -54,8 +72,9 @@ if __name__ == "__main__":
                 res, img_show = tracker.init(frame, None)
                 tracker.initialized = True
             else:
-                res, img_show = tracker.update(frame)
+                res = tracker.update(frame)
 
+            img_show = None
             if img_show is not None:
                 cv2.imshow("Image", img_show)
             else:

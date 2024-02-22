@@ -4,7 +4,7 @@ import numpy as np
 import cv2
 
 sys.path.append('..')
-from serial.aun_arduino import MyArduino
+from my_serial.aun_arduino import MyArduino
 from tracking.aun_obj_tracking import TrackerCV, TrackerMS
 from cam_calib.aun_cam_model import LabCamera
 from cam_calib.aun_cam_calib import CamCalib
