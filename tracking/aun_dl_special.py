@@ -3,13 +3,14 @@ import cv2
 from ultralytics import YOLO
 from ultralytics.utils.plotting import Annotator
 
-from aun_obj_tracking import Tracker
+from tracking.aun_obj_tracking import Tracker
 
 
 class TrackerYOLO(Tracker):
     def __init__(self):
         super().__init__()
         self.model = YOLO('../models/m_omoumi_cap.pt')
+        self.conf = 0.65
 
     def annotate_frame(self, res, frame):
         img = None
@@ -42,17 +43,15 @@ class TrackerYOLO(Tracker):
         return self.last_point
 
     def init(self, frame, bbox):
-        res = self.model.predict(source=frame, show=False, save=False, conf=0.5)
-        # Tracking with default tracker
-        # res = self.model.track(source=frame, show=False, save=False, conf=0.5)
+        res = self.model.predict(source=frame, show=False, save=False, conf=self.conf)
         list_bbox = self.get_bboxes(res)
-        return self.get_last_point(list_bbox)
+        self.initialized = True
+        return True, self.get_last_point(list_bbox)
 
     def update(self, frame):
-        res = self.model.predict(source=frame, show=False, save=False, conf=0.5)
-        # res = self.model.track(source=frame, show=False, save=False, conf=0.5)
+        res = self.model.predict(source=frame, show=False, save=False, conf=self.conf)
         list_bbox = self.get_bboxes(res)
-        return self.get_last_point(list_bbox)
+        return True, self.get_last_point(list_bbox)
 
 
 if __name__ == "__main__":

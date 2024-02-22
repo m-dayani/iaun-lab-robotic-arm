@@ -169,9 +169,8 @@ class VizThread:
             else:
                 img_txt = f'(%.2f, %.2f)' % (w_loc[0], w_loc[1])
 
-            if len(px_loc) < 2:
-                loc_int = (0, 0)
-            else:
+            loc_int = (0, 0)
+            if len(px_loc) >= 2:
                 loc_int = np.int32(px_loc[0:2])
 
             cv2.putText(img_show, img_txt, loc_int, cv2.FONT_HERSHEY_PLAIN, 1.4, (0, 255, 0))
@@ -196,7 +195,7 @@ class TrackingThread:
         # Load calibrator
         self.myCalib = CamCalib(calib_path)
         # Load Tracker
-        self.tracker = TrackerYOLO()
+        self.tracker = TrackerCV()
         # Limits and averaging
         self.rbst = Robustify()
         self.ini_delay = 50
@@ -301,7 +300,7 @@ if __name__ == "__main__":
     fps = 24
 
     # Load camera and parameters
-    my_cam = LabCamera(0, (640, 480))
+    my_cam = LabCamera(2, (640, 480))
     my_cam.load_params(param_file)
 
     cam_capture = CamCapture(fps)
